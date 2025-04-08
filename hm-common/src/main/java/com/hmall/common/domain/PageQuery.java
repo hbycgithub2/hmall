@@ -63,6 +63,13 @@ public class PageQuery {
         page.addOrder(orderItem);
         return page;
     }
+    public void setPageNo(Integer pageNo) {
+        this.pageNo = (pageNo == null || pageNo < 1) ? DEFAULT_PAGE_NUM : pageNo;
+    }
+
+    public void setPageSize(Integer pageSize) {
+        this.pageSize = (pageSize == null || pageSize < 1) ? DEFAULT_PAGE_SIZE : pageSize;
+    }
     public <T> Page<T> toMpPageDefaultSortByCreateTimeDesc() {
         return toMpPage("create_time", false);
     }
