@@ -1,0 +1,124 @@
+@startuml 并发订单处理测试时序图
+!theme plain
+skinparam backgroundColor #FFFFFF
+skinparam sequenceArrowThickness 2
+skinparam roundcorner 20
+skinparam maxmessagesize 60
+
+title 并发订单处理测试时序图 - testConcurrentOrderProcessing方法
+
+participant "测试方法" as TestMethod #LightBlue
+participant "线程池" as ThreadPool #LightGreen
+participant "工作线程1" as Worker1 #LightYellow
+participant "工作线程2" as Worker2 #LightYellow
+participant "工作线程3" as Worker3 #LightYellow
+participant "OrderTask1" as Task1 #LightCoral
+participant "OrderTask2" as Task2 #LightCoral
+participant "OrderTask3" as Task3 #LightCoral
+participant "OrderTask4" as Task4 #LightCoral
+participant "OrderTask5" as Task5 #LightCoral
+participant "OrderService" as OrderService #LightSteelBlue
+participant "Future列表" as FutureList #LightPink
+
+== 初始化阶段 ==
+TestMethod -> TestMethod: 创建固定大小线程池\n(线程数 = CPU核心数 * 2)
+TestMethod -> TestMethod: 初始化测试订单列表\n(5个订单)
+TestMethod -> FutureList: 创建Future结果列表
+
+== 提交任务阶段 ==
+loop 遍历5个测试订单
+    TestMethod -> ThreadPool: 提交OrderTask任务
+    activate ThreadPool
+
+    alt 线程池有可用线程
+        ThreadPool -> Worker1: 分配任务1
+        activate Worker1
+        Worker1 -> Task1: 执行OrderTask1.call()
+        activate Task1
+
+        Task1 -> OrderService: 模拟随机异常检查
+        activate OrderService
+        OrderService --> Task1: 可能抛出异常(5%概率)
+        deactivate OrderService
+
+        Task1 -> OrderService: 检查库存(productId, quantity)
+        activate OrderService
+        note right: 模拟数据库查询\n延迟100-300ms
+        OrderService -> OrderService: Thread.sleep(100-300ms)
+        OrderService --> Task1: 库存检查结果(90%概率有库存)
+        deactivate OrderService
+
+        alt 库存不足
+            Task1 -> Task1: 创建失败结果
+            Task1 --> Worker1: OrderProcessResult(失败)
+        else 库存充足
+            Task1 -> OrderService: 验证优惠券(couponId, userId)
+            activate OrderService
+            note right: 模拟优惠券验证\n延迟50-150ms
+            OrderService -> OrderService: Thread.sleep(50-150ms)
+            OrderService --> Task1: 优惠券验证结果(85%概率有效)
+            deactivate OrderService
+
+            Task1 -> OrderService: 计算最终价格
+            activate OrderService
+            note right: 模拟价格计算\n延迟30-80ms
+            OrderService -> OrderService: Thread.sleep(30-80ms)
+            OrderService --> Task1: 最终价格
+            deactivate OrderService
+
+            Task1 -> Task1: 创建成功结果
+            Task1 --> Worker1: OrderProcessResult(成功)
+        end
+
+        deactivate Task1
+        Worker1 --> ThreadPool: 返回结果
+        deactivate Worker1
+
+    else 线程池无可用线程
+        ThreadPool -> ThreadPool: 任务进入等待队列
+    end
+
+    ThreadPool -> FutureList: 返回Future对象
+    deactivate ThreadPool
+    TestMethod -> FutureList: 将Future添加到列表
+end
+
+== 收集结果阶段 ==
+loop 遍历所有Future对象
+    TestMethod -> FutureList: 获取Future对象
+    TestMethod -> FutureList: future.get(10秒超时)
+    activate FutureList
+
+    alt 任务完成
+        FutureList --> TestMethod: OrderProcessResult
+        TestMethod -> TestMethod: 添加到结果列表
+    else 任务超时
+        FutureList --> TestMethod: TimeoutException
+        TestMethod -> FutureList: future.cancel(true)
+    end
+
+    deactivate FutureList
+end
+
+== 结果验证阶段 ==
+TestMethod -> TestMethod: 验证结果数量
+TestMethod -> TestMethod: 统计成功/失败订单数
+TestMethod -> TestMethod: 显示每个订单处理结果
+TestMethod -> TestMethod: 验证至少有一个订单成功
+
+== 清理阶段 ==
+TestMethod -> ThreadPool: executor.shutdown()
+TestMethod -> ThreadPool: 等待线程池关闭(5秒超时)
+alt 超时未关闭
+    TestMethod -> ThreadPool: executor.shutdownNow()
+end
+
+note over TestMethod, ThreadPool
+主要特点：
+1. 使用固定大小线程池控制并发数
+2. 异步提交任务，立即返回Future对象
+3. 支持超时控制和异常处理
+4. 并发处理提高整体性能
+end note
+
+@enduml

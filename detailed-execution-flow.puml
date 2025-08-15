@@ -1,0 +1,172 @@
+@startuml 详细执行流程时序图
+
+title testPerformanceComparison 方法详细执行流程
+
+!define TEST_COLOR #E6F7FF
+!define SERIAL_COLOR #FFE6E6
+!define PARALLEL_COLOR #E6F3FF
+!define SERVICE_COLOR #FFF2E6
+
+actor "测试执行器" as Tester
+participant "testPerformanceComparison" as TestMethod
+participant "OrderService" as OrderService
+participant "OrderTask" as OrderTask
+participant "CompletableFuture" as CF
+participant "ForkJoinPool" as FJP
+participant "Worker线程" as Worker
+
+== 测试方法初始化 ==
+
+Tester -> TestMethod: 调用测试方法
+activate TestMethod TEST_COLOR
+
+TestMethod -> TestMethod: 准备测试数据\n(testOrders列表)
+note right: 包含多个Order对象\n每个订单有不同的属性
+
+== 串行处理阶段 ==
+
+TestMethod -> TestMethod: 记录串行开始时间
+note over TestMethod: serialStartTime = System.currentTimeMillis()
+
+TestMethod -> TestMethod: 创建结果列表\nList<OrderProcessResult> serialResults
+
+loop 遍历每个订单 (for循环)
+    TestMethod -> OrderTask: new OrderTask(order, orderService)
+    activate OrderTask SERIAL_COLOR
+    
+    TestMethod -> OrderTask: task.call()
+    
+    OrderTask -> OrderTask: 记录任务开始时间
+    OrderTask -> OrderTask: 获取线程名称 (main)
+    
+    OrderTask -> OrderService: simulateRandomException()
+    activate OrderService SERVICE_COLOR
+    OrderService --> OrderTask: 可能抛出异常 (5%概率)
+    deactivate OrderService
+    
+    OrderTask -> OrderService: checkStock(productId, quantity)
+    activate OrderService SERVICE_COLOR
+    note right: 模拟数据库查询\n延迟100-300ms
+    OrderService -> OrderService: Thread.sleep(100-300ms)
+    OrderService -> OrderService: 90%概率返回true
+    OrderService --> OrderTask: boolean hasStock
+    deactivate OrderService
+    
+    alt 库存不足
+        OrderTask -> OrderTask: 创建失败结果
+        OrderTask --> TestMethod: OrderProcessResult (失败)
+    else 库存充足
+        OrderTask -> OrderService: validateCoupon(couponId, userId)
+        activate OrderService SERVICE_COLOR
+        note right: 模拟优惠券验证\n延迟50-150ms
+        OrderService -> OrderService: Thread.sleep(50-150ms)
+        OrderService -> OrderService: 85%概率返回true
+        OrderService --> OrderTask: boolean couponValid
+        deactivate OrderService
+        
+        OrderTask -> OrderService: calculateFinalPrice(order, couponValid)
+        activate OrderService SERVICE_COLOR
+        note right: 模拟价格计算\n延迟30-80ms
+        OrderService -> OrderService: Thread.sleep(30-80ms)
+        OrderService -> OrderService: 计算最终价格\n(含折扣逻辑)
+        OrderService --> OrderTask: BigDecimal finalPrice
+        deactivate OrderService
+        
+        OrderTask -> OrderTask: 创建成功结果
+        OrderTask --> TestMethod: OrderProcessResult (成功)
+    end
+    
+    deactivate OrderTask
+    TestMethod -> TestMethod: serialResults.add(result)
+end
+
+TestMethod -> TestMethod: 记录串行结束时间
+note over TestMethod: serialEndTime = System.currentTimeMillis()\nserialTime = serialEndTime - serialStartTime
+
+== 并行处理阶段 ==
+
+TestMethod -> TestMethod: 记录并行开始时间
+note over TestMethod: parallelStartTime = System.currentTimeMillis()
+
+TestMethod -> TestMethod: 创建CompletableFuture列表
+TestMethod -> TestMethod: testOrders.stream()
+
+loop 为每个订单创建异步任务
+    TestMethod -> CF: CompletableFuture.supplyAsync(() -> {...})
+    activate CF PARALLEL_COLOR
+    
+    CF -> FJP: 提交任务到线程池
+    activate FJP PARALLEL_COLOR
+    
+    FJP -> Worker: 分配给可用工作线程
+    activate Worker PARALLEL_COLOR
+    
+    Worker -> OrderTask: new OrderTask(order, orderService)
+    activate OrderTask PARALLEL_COLOR
+    
+    Worker -> OrderTask: task.call()
+    
+    note over Worker, OrderTask: 与串行处理相同的业务逻辑\n但在不同的工作线程中执行
+    
+    OrderTask -> OrderService: simulateRandomException()
+    activate OrderService SERVICE_COLOR
+    OrderService --> OrderTask: 可能抛出异常
+    deactivate OrderService
+    
+    par 多个任务并行执行
+        OrderTask -> OrderService: checkStock()
+        activate OrderService SERVICE_COLOR
+        OrderService --> OrderTask: 库存结果
+        deactivate OrderService
+        
+        OrderTask -> OrderService: validateCoupon()
+        activate OrderService SERVICE_COLOR
+        OrderService --> OrderTask: 优惠券结果
+        deactivate OrderService
+        
+        OrderTask -> OrderService: calculateFinalPrice()
+        activate OrderService SERVICE_COLOR
+        OrderService --> OrderTask: 最终价格
+        deactivate OrderService
+    end
+    
+    OrderTask --> Worker: OrderProcessResult
+    deactivate OrderTask
+    
+    Worker --> FJP: 任务完成
+    deactivate Worker
+    
+    FJP --> CF: 返回结果
+    deactivate FJP
+    
+    deactivate CF
+end
+
+TestMethod -> CF: CompletableFuture.allOf(futures).join()
+activate CF PARALLEL_COLOR
+note right: 等待所有异步任务完成
+CF --> TestMethod: 所有任务完成
+deactivate CF
+
+TestMethod -> TestMethod: 收集所有结果
+TestMethod -> TestMethod: 记录并行结束时间
+note over TestMethod: parallelEndTime = System.currentTimeMillis()\nparallelTime = parallelEndTime - parallelStartTime
+
+== 性能分析阶段 ==
+
+TestMethod -> TestMethod: 计算性能指标
+
+note over TestMethod: 性能计算公式:\n• speedup = serialTime / parallelTime\n• efficiency = (speedup - 1) × 100%
+
+TestMethod -> TestMethod: 输出性能对比结果
+note right: 示例输出:\n串行处理时间: 1938ms\n并行处理时间: 403ms\n性能提升: 4.81倍\n效率提升: 380.9%
+
+TestMethod -> TestMethod: 验证并行处理效果
+note right: 断言:\n• 结果数量一致\n• 并行处理通常更快\n• 功能正确性验证
+
+TestMethod --> Tester: 测试完成
+deactivate TestMethod
+
+note over Tester, Worker: 关键观察点:\n1. 串行处理：任务顺序执行，总时间累加\n2. 并行处理：任务同时执行，时间重叠\n3. 性能提升：取决于CPU核心数和任务特性\n4. 线程安全：OrderService方法需要线程安全
+
+@enduml

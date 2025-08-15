@@ -1,0 +1,74 @@
+@startuml 串行vs并行架构对比图
+
+!define SERIAL_COLOR #FFE6E6
+!define PARALLEL_COLOR #E6F3FF
+!define THREAD_COLOR #F0F8FF
+!define SERVICE_COLOR #FFF2E6
+
+title 串行处理 vs 并行处理架构对比
+
+package "串行处理架构" as SerialArch {
+    
+    rectangle "主线程 (main)" as MainThread SERIAL_COLOR {
+        rectangle "OrderTask1\n(订单1处理)" as ST1
+        rectangle "OrderTask2\n(订单2处理)" as ST2  
+        rectangle "OrderTask3\n(订单3处理)" as ST3
+        rectangle "OrderTask4\n(订单4处理)" as ST4
+        
+        ST1 -down-> ST2 : 顺序执行
+        ST2 -down-> ST3 : 等待前一个完成
+        ST3 -down-> ST4 : 阻塞式处理
+    }
+    
+    rectangle "OrderService" as SerialService SERVICE_COLOR {
+        rectangle "checkStock()" as SS1
+        rectangle "validateCoupon()" as SS2
+        rectangle "calculateFinalPrice()" as SS3
+    }
+    
+    MainThread --> SerialService : 单线程调用
+    
+    note top of MainThread : 特点:\n• 单线程执行\n• 顺序处理\n• 总时间 = Σ(单个任务时间)\n• CPU利用率低
+}
+
+package "并行处理架构" as ParallelArch {
+    
+    rectangle "主线程 (main)" as MainThreadP PARALLEL_COLOR {
+        rectangle "CompletableFuture\n任务调度器" as CFScheduler
+    }
+    
+    rectangle "ForkJoinPool\n线程池" as FJPool THREAD_COLOR {
+        rectangle "Worker-1" as W1 PARALLEL_COLOR {
+            rectangle "OrderTask1" as PT1
+        }
+        rectangle "Worker-2" as W2 PARALLEL_COLOR {
+            rectangle "OrderTask2" as PT2
+        }
+        rectangle "Worker-3" as W3 PARALLEL_COLOR {
+            rectangle "OrderTask3" as PT3
+        }
+        rectangle "Worker-4" as W4 PARALLEL_COLOR {
+            rectangle "OrderTask4" as PT4
+        }
+    }
+    
+    rectangle "OrderService\n(线程安全)" as ParallelService SERVICE_COLOR {
+        rectangle "checkStock()" as PS1
+        rectangle "validateCoupon()" as PS2
+        rectangle "calculateFinalPrice()" as PS3
+    }
+    
+    MainThreadP --> CFScheduler : 创建异步任务
+    CFScheduler --> FJPool : 提交到线程池
+    
+    W1 --> ParallelService : 并发调用
+    W2 --> ParallelService : 并发调用
+    W3 --> ParallelService : 并发调用
+    W4 --> ParallelService : 并发调用
+    
+    note top of FJPool : 特点:\n• 多线程并行\n• 同时处理\n• 总时间 ≈ max(单个任务时间)\n• CPU利用率高
+}
+
+note bottom : 性能对比:\n串行处理: 1938ms (累加时间)\n并行处理: 403ms (最大时间)\n性能提升: 4.81倍
+
+@enduml

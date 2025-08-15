@@ -1,0 +1,79 @@
+@startuml 时间线对比图
+
+!define SERIAL_COLOR #FFE6E6
+!define PARALLEL_COLOR #E6F3FF
+!define TASK_COLOR #F0F8FF
+
+title 串行处理 vs 并行处理时间线对比
+
+scale 1.5
+
+concise "串行处理" as Serial
+concise "订单1 (main)" as S1
+concise "订单2 (main)" as S2  
+concise "订单3 (main)" as S3
+concise "订单4 (main)" as S4
+
+concise "并行处理" as Parallel
+concise "订单1 (Worker-1)" as P1
+concise "订单2 (Worker-2)" as P2
+concise "订单3 (Worker-3)" as P3
+concise "订单4 (Worker-4)" as P4
+
+@0
+Serial is "开始串行处理" SERIAL_COLOR
+S1 is "空闲"
+S2 is "空闲"
+S3 is "空闲"
+S4 is "空闲"
+
+Parallel is "开始并行处理" PARALLEL_COLOR
+P1 is "空闲"
+P2 is "空闲"
+P3 is "空闲"
+P4 is "空闲"
+
+@100
+S1 is "处理中" TASK_COLOR
+note top of S1 : 库存检查\n优惠券验证\n价格计算
+
+@450
+S1 is "完成"
+S2 is "处理中" TASK_COLOR
+
+@800
+S2 is "完成"
+S3 is "处理中" TASK_COLOR
+
+@1150
+S3 is "完成"
+S4 is "处理中" TASK_COLOR
+
+@1500
+S4 is "完成"
+Serial is "串行处理完成" SERIAL_COLOR
+
+' 并行处理时间线
+@100
+P1 is "处理中" TASK_COLOR
+P2 is "处理中" TASK_COLOR
+P3 is "处理中" TASK_COLOR
+P4 is "处理中" TASK_COLOR
+
+note top of P1 : 同时开始处理
+note top of P2 : 库存检查
+note top of P3 : 优惠券验证  
+note top of P4 : 价格计算
+
+@450
+P1 is "完成"
+P2 is "完成"
+P3 is "完成"
+P4 is "完成"
+Parallel is "并行处理完成" PARALLEL_COLOR
+
+@1500
+
+note bottom : 时间对比分析:\n• 串行处理总时间: 1400ms (4 × 350ms)\n• 并行处理总时间: 350ms (max(350ms))\n• 时间节省: 1050ms (75%)\n• 性能提升: 4倍
+
+@enduml

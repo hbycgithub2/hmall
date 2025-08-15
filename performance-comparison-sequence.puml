@@ -1,0 +1,197 @@
+@startuml 串行处理vs并行处理时序图
+
+title 串行处理 vs 并行处理性能对比时序图
+
+!define SERIAL_COLOR #FFE6E6
+!define PARALLEL_COLOR #E6F3FF
+!define SUCCESS_COLOR #E6FFE6
+!define PROCESS_COLOR #FFF2E6
+
+participant "测试主线程" as TestMain
+participant "主线程" as MainThread
+participant "OrderTask1" as Task1
+participant "OrderTask2" as Task2
+participant "OrderTask3" as Task3
+participant "OrderService" as Service
+participant "ForkJoinPool" as Pool
+participant "Worker-1" as W1
+participant "Worker-2" as W2
+participant "Worker-3" as W3
+
+== 串行处理阶段 ==
+
+TestMain -> TestMain: 记录开始时间\nserialStartTime
+activate TestMain SERIAL_COLOR
+
+note over TestMain, Service: 串行处理：在主线程中顺序执行所有任务
+
+TestMain -> MainThread: for循环开始
+activate MainThread SERIAL_COLOR
+
+MainThread -> Task1: new OrderTask(order1)
+activate Task1 SERIAL_COLOR
+MainThread -> Task1: task.call()
+Task1 -> Service: checkStock(productId, quantity)
+activate Service PROCESS_COLOR
+Service --> Task1: 返回库存状态 (200ms延迟)
+deactivate Service
+
+Task1 -> Service: validateCoupon(couponId, userId)
+activate Service PROCESS_COLOR
+Service --> Task1: 返回优惠券状态 (100ms延迟)
+deactivate Service
+
+Task1 -> Service: calculateFinalPrice(order, couponValid)
+activate Service PROCESS_COLOR
+Service --> Task1: 返回最终价格 (50ms延迟)
+deactivate Service
+
+Task1 --> MainThread: 返回处理结果
+deactivate Task1
+note right: 订单1处理完成\n总耗时: ~350ms
+
+MainThread -> Task2: new OrderTask(order2)
+activate Task2 SERIAL_COLOR
+MainThread -> Task2: task.call()
+Task2 -> Service: checkStock(productId, quantity)
+activate Service PROCESS_COLOR
+Service --> Task2: 返回库存状态 (200ms延迟)
+deactivate Service
+
+Task2 -> Service: validateCoupon(couponId, userId)
+activate Service PROCESS_COLOR
+Service --> Task2: 返回优惠券状态 (100ms延迟)
+deactivate Service
+
+Task2 -> Service: calculateFinalPrice(order, couponValid)
+activate Service PROCESS_COLOR
+Service --> Task2: 返回最终价格 (50ms延迟)
+deactivate Service
+
+Task2 --> MainThread: 返回处理结果
+deactivate Task2
+note right: 订单2处理完成\n总耗时: ~350ms
+
+MainThread -> Task3: new OrderTask(order3)
+activate Task3 SERIAL_COLOR
+MainThread -> Task3: task.call()
+Task3 -> Service: checkStock(productId, quantity)
+activate Service PROCESS_COLOR
+Service --> Task3: 返回库存状态 (200ms延迟)
+deactivate Service
+
+Task3 -> Service: validateCoupon(couponId, userId)
+activate Service PROCESS_COLOR
+Service --> Task3: 返回优惠券状态 (100ms延迟)
+deactivate Service
+
+Task3 -> Service: calculateFinalPrice(order, couponValid)
+activate Service PROCESS_COLOR
+Service --> Task3: 返回最终价格 (50ms延迟)
+deactivate Service
+
+Task3 --> MainThread: 返回处理结果
+deactivate Task3
+note right: 订单3处理完成\n总耗时: ~350ms
+
+MainThread --> TestMain: 串行处理完成
+deactivate MainThread
+
+TestMain -> TestMain: 记录结束时间\nserialEndTime
+note over TestMain: 串行处理总时间\n≈ 1050ms (3 × 350ms)
+
+== 并行处理阶段 ==
+
+TestMain -> TestMain: 记录开始时间\nparallelStartTime
+
+note over TestMain, W3: 并行处理：使用CompletableFuture在多个线程中同时执行
+
+TestMain -> Pool: 创建CompletableFuture任务
+activate Pool PARALLEL_COLOR
+
+TestMain -> Pool: CompletableFuture.supplyAsync(task1)
+Pool -> W1: 分配任务1到Worker-1
+activate W1 PARALLEL_COLOR
+
+TestMain -> Pool: CompletableFuture.supplyAsync(task2)
+Pool -> W2: 分配任务2到Worker-2
+activate W2 PARALLEL_COLOR
+
+TestMain -> Pool: CompletableFuture.supplyAsync(task3)
+Pool -> W3: 分配任务3到Worker-3
+activate W3 PARALLEL_COLOR
+
+note over W1, W3: 三个任务同时开始执行
+
+par 并行执行任务1
+    W1 -> Service: checkStock(productId1, quantity1)
+    activate Service PROCESS_COLOR
+    Service --> W1: 返回库存状态 (200ms延迟)
+    deactivate Service
+    
+    W1 -> Service: validateCoupon(couponId1, userId1)
+    activate Service PROCESS_COLOR
+    Service --> W1: 返回优惠券状态 (100ms延迟)
+    deactivate Service
+    
+    W1 -> Service: calculateFinalPrice(order1, couponValid)
+    activate Service PROCESS_COLOR
+    Service --> W1: 返回最终价格 (50ms延迟)
+    deactivate Service
+    
+    W1 --> Pool: 任务1完成
+    deactivate W1
+
+else 并行执行任务2
+    W2 -> Service: checkStock(productId2, quantity2)
+    activate Service PROCESS_COLOR
+    Service --> W2: 返回库存状态 (200ms延迟)
+    deactivate Service
+    
+    W2 -> Service: validateCoupon(couponId2, userId2)
+    activate Service PROCESS_COLOR
+    Service --> W2: 返回优惠券状态 (100ms延迟)
+    deactivate Service
+    
+    W2 -> Service: calculateFinalPrice(order2, couponValid)
+    activate Service PROCESS_COLOR
+    Service --> W2: 返回最终价格 (50ms延迟)
+    deactivate Service
+    
+    W2 --> Pool: 任务2完成
+    deactivate W2
+
+else 并行执行任务3
+    W3 -> Service: checkStock(productId3, quantity3)
+    activate Service PROCESS_COLOR
+    Service --> W3: 返回库存状态 (200ms延迟)
+    deactivate Service
+    
+    W3 -> Service: validateCoupon(couponId3, userId3)
+    activate Service PROCESS_COLOR
+    Service --> W3: 返回优惠券状态 (100ms延迟)
+    deactivate Service
+    
+    W3 -> Service: calculateFinalPrice(order3, couponValid)
+    activate Service PROCESS_COLOR
+    Service --> W3: 返回最终价格 (50ms延迟)
+    deactivate Service
+    
+    W3 --> Pool: 任务3完成
+    deactivate W3
+end
+
+Pool -> TestMain: CompletableFuture.allOf().join()
+deactivate Pool
+
+TestMain -> TestMain: 记录结束时间\nparallelEndTime
+note over TestMain: 并行处理总时间\n≈ 350ms (max(单个任务时间))
+
+== 性能对比分析 ==
+
+TestMain -> TestMain: 计算性能提升
+note over TestMain: 性能分析结果\n串行时间: 1050ms\n并行时间: 350ms\n性能提升: 3.0倍\n效率提升: 200%
+
+deactivate TestMain
+
+@enduml

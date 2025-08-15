@@ -1,0 +1,70 @@
+@startuml
+title 串行处理（testPerformanceComparison）
+autonumber
+
+actor Tester as T
+participant "SimpleConcurrentTest" as SCT
+participant "OrderTask" as Task
+participant "OrderService" as Svc
+collections "serialResults" as Results
+
+T -> SCT: 调用 testPerformanceComparison()
+SCT -> SCT: 记录 serialStartTime
+
+loop 遍历每个 Order
+  SCT -> Task: new OrderTask(order, orderService)
+  activate Task
+  Task -> Task: call()
+  Task -> Svc: 处理订单(order)
+  activate Svc
+  Svc --> Task: OrderProcessResult
+  deactivate Svc
+  Task --> SCT: OrderProcessResult
+  deactivate Task
+  SCT -> Results: add(result)
+end
+
+SCT -> SCT: 记录 serialEndTime 并计算 serialTime
+SCT --> T: 输出串行耗时(serialTime)
+
+newpage 并行处理（testPerformanceComparison）
+title 并行处理（testPerformanceComparison）
+autonumber
+
+actor Tester as T2
+participant "SimpleConcurrentTest" as PCT
+participant "CompletableFuture" as CF
+participant "OrderTask" as PTask
+participant "OrderService" as PSvc
+collections "futures" as Futures
+
+T2 -> PCT: 调用 testPerformanceComparison()
+PCT -> PCT: 记录 parallelStartTime
+
+par 为每个 Order 异步提交
+  PCT -> CF: supplyAsync(() -> task.call())
+  activate CF
+  CF -> PTask: new OrderTask(order, orderService)
+  activate PTask
+  PTask -> PTask: call()
+  PTask -> PSvc: 处理订单(order)
+  activate PSvc
+  PSvc --> PTask: OrderProcessResult
+  deactivate PSvc
+  PTask --> CF: OrderProcessResult
+  deactivate PTask
+  CF --> PCT: CompletableFuture<OrderProcessResult>
+  deactivate CF
+  PCT -> Futures: add(future)
+end
+
+PCT -> CF: CompletableFuture.allOf(futures).join()
+CF --> PCT: 全部完成
+
+PCT -> PCT: 记录 parallelEndTime 并计算 parallelTime
+PCT --> T2: 输出并行耗时(parallelTime)与加速比(speedup)
+
+@enduml
+
+
+
